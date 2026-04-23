@@ -7,6 +7,10 @@
   <link rel="icon" type="image/svg+xml" href="favicon-tt.svg">
   <link rel="icon" type="image/png" href="favicon-tt.png">
   <link rel="apple-touch-icon" href="favicon-tt.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
   <style>
     @font-face {
       font-family: 'Villette';
@@ -162,12 +166,13 @@
       z-index: 2;
       pointer-events: none;
       user-select: none;
-      line-height: 1.2;
-      padding: 0.1em 0.05em 0.25em;
+      line-height: 1;
       will-change: left, top;
       font-synthesis: none;
       -webkit-font-synthesis: none;
       transition: opacity 0.5s ease;
+      overflow: visible;
+      white-space: nowrap;
     }
 
     /* ── drawing canvas (mobile) ── */
@@ -478,6 +483,29 @@
   // ─────────────────────────────────────────────────────────────
   // SPAWN / REMOVE LETTER
   // ─────────────────────────────────────────────────────────────
+  // Offscreen canvas used to measure the *actual painted* bounding box of a glyph
+  // for a given font/weight/size — this is more accurate than element.getBoundingClientRect()
+  // which uses the em-box (and clips tall glyphs like extrabold 't' in Villette).
+  const measureCanvas = document.createElement('canvas');
+  const measureCtx = measureCanvas.getContext('2d');
+
+  function measureGlyph(char, fontFamily, fontWeight, fontSize) {
+    measureCtx.font = `${fontWeight} ${fontSize}px '${fontFamily}', serif`;
+    measureCtx.textBaseline = 'alphabetic';
+    const m = measureCtx.measureText(char);
+    // actualBoundingBox* gives the true pixel extents of the rendered glyph
+    // relative to the text origin (x=0 on the baseline).
+    const left   = m.actualBoundingBoxLeft    || 0;
+    const right  = m.actualBoundingBoxRight   || m.width;
+    const asc    = m.actualBoundingBoxAscent  || fontSize * 0.8;
+    const desc   = m.actualBoundingBoxDescent || fontSize * 0.2;
+    return {
+      left, right, asc, desc,
+      width:  left + right,
+      height: asc + desc
+    };
+  }
+
   function spawnLetter(char) {
     const font   = currentFont();
     const size   = computeSize();
@@ -492,27 +520,53 @@
     el.style.color      = '#111';
     el.style.opacity    = '1';
 
+    // Measure the REAL painted extents (not the em-box).
+    const g = measureGlyph(char, font.family, weight, size);
+
+    // The span uses line-height: 1, so its top is ~size*0 above the baseline...
+    // Actually CSS places the baseline at roughly (font-size * font-ascent / em-units)
+    // from the element top. We don't need to know this exactly — we only need:
+    //   - the element's own width/height for positioning
+    //   - the offsets from element-top-left to the painted glyph's bounding rect
+    //
+    // We use (left, asc) from the baseline, which we approximate as:
+    //   baseline-from-element-top = size * 0.8  (typical for most fonts)
+    // Then:
+    //   glyph-top-relative-to-element-top    = baseline - asc
+    //   glyph-bottom-relative-to-element-top = baseline + desc
+    const approxBaseline = size * 0.8;
+    const glyphTopOffset    = approxBaseline - g.asc;     // may be negative for tall glyphs
+    const glyphBottomOffset = approxBaseline + g.desc;    // glyph bottom from el top
+    const glyphLeftOffset   = 0;                          // glyphs normally start at x=0
+    const glyphRightOffset  = g.width;                    // glyph right from el left
+
+    // Element's own box dimensions (used only for positioning via left/top).
+    // The element may be smaller than the painted glyph; overflow:visible lets
+    // the paint escape and we track it via offsets.
+    const elW = g.width;
+    const elH = size; // line-height: 1 -> element height = font-size
+
     el.style.left = '-9999px';
     el.style.top  = '-9999px';
+    el.style.width = elW + 'px';
+    el.style.height = elH + 'px';
     document.body.appendChild(el);
 
-    const rect = el.getBoundingClientRect();
-    const cs   = getComputedStyle(el);
-    const pl = parseFloat(cs.paddingLeft)   || 0;
-    const pr = parseFloat(cs.paddingRight)  || 0;
-    const pt = parseFloat(cs.paddingTop)    || 0;
-    const pb = parseFloat(cs.paddingBottom) || 0;
-
-    // full element size (includes padding — used to position the element)
-    const w  = rect.width  || size * 0.75;
-    const h  = rect.height || size * 1.3;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    // allow the element to be placed so that the GLYPH (not the padding)
-    // touches the viewport edges
-    const x  = rand(-pl, Math.max(1, vw - w + pr));
-    const y  = rand(-pt, Math.max(1, vh - h + pb));
+    // Place the element so that the painted glyph fits inside the viewport:
+    //   l.x + glyphLeftOffset  >= 0        ->  l.x >= -glyphLeftOffset
+    //   l.x + glyphRightOffset <= vw       ->  l.x <= vw - glyphRightOffset
+    //   l.y + glyphTopOffset    >= 0       ->  l.y >= -glyphTopOffset
+    //   l.y + glyphBottomOffset <= vh      ->  l.y <= vh - glyphBottomOffset
+    const minX = -glyphLeftOffset;
+    const maxX = vw - glyphRightOffset;
+    const minY = -glyphTopOffset;
+    const maxY = vh - glyphBottomOffset;
+
+    const x  = rand(minX, Math.max(minX + 1, maxX));
+    const y  = rand(minY, Math.max(minY + 1, maxY));
     const vx = rand(SPEED_MIN, SPEED_MAX) * (Math.random() < 0.5 ? 1 : -1);
     const vy = rand(SPEED_MIN, SPEED_MAX) * (Math.random() < 0.5 ? 1 : -1);
 
@@ -520,8 +574,13 @@
     el.style.top  = y + 'px';
 
     letters.push({
-      el, x, y, vx, vy, w, h,
-      pl, pr, pt, pb,
+      el, x, y, vx, vy,
+      // glyph bounding box offsets (from element top-left)
+      glyphL: glyphLeftOffset,
+      glyphR: glyphRightOffset,
+      glyphT: glyphTopOffset,
+      glyphB: glyphBottomOffset,
+      char, size, // keep for re-measurement on font change
       born: Date.now(), dying: false
     });
   }
@@ -542,22 +601,20 @@
     fontIndex = (fontIndex + 1) % FONTS.length;
     const font = currentFont();
     letters.forEach(l => {
+      const newWeight = pickWeight(font);
       l.el.style.fontFamily = `'${font.family}', serif`;
-      l.el.style.fontWeight = pickWeight(font);
+      l.el.style.fontWeight = newWeight;
+      // re-measure with the new font
+      const g = measureGlyph(l.char, font.family, newWeight, l.size);
+      const approxBaseline = l.size * 0.8;
+      l.glyphL = 0;
+      l.glyphR = g.width;
+      l.glyphT = approxBaseline - g.asc;
+      l.glyphB = approxBaseline + g.desc;
+      l.el.style.width  = g.width + 'px';
+      l.el.style.height = l.size + 'px';
     });
     updateFontLabel();
-    requestAnimationFrame(() => {
-      letters.forEach(l => {
-        const r = l.el.getBoundingClientRect();
-        const cs = getComputedStyle(l.el);
-        l.w = r.width  || parseFloat(l.el.style.fontSize) * 0.75;
-        l.h = r.height || parseFloat(l.el.style.fontSize) * 1.3;
-        l.pl = parseFloat(cs.paddingLeft)   || 0;
-        l.pr = parseFloat(cs.paddingRight)  || 0;
-        l.pt = parseFloat(cs.paddingTop)    || 0;
-        l.pb = parseFloat(cs.paddingBottom) || 0;
-      });
-    });
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -573,17 +630,16 @@
       l.x += l.vx;
       l.y += l.vy;
 
-      // Bounce on GLYPH edges, not element edges.
-      // Glyph-left edge in viewport = l.x + l.pl
-      // Glyph-right edge            = l.x + l.w - l.pr
-      // Glyph-top edge              = l.y + l.pt
-      // Glyph-bottom edge           = l.y + l.h - l.pb
-      // We want: glyph-left >= 0, glyph-right <= vw, etc.
+      // Bounce on the painted glyph edges (measured from canvas metrics):
+      //   glyph-left   = l.x + l.glyphL   (want >= 0)
+      //   glyph-right  = l.x + l.glyphR   (want <= vw)
+      //   glyph-top    = l.y + l.glyphT   (want >= 0)
+      //   glyph-bottom = l.y + l.glyphB   (want <= vh)
       let bounced = false;
-      const minX = -l.pl;                // l.x such that glyph-left = 0
-      const maxX = vw - l.w + l.pr;      // l.x such that glyph-right = vw
-      const minY = -l.pt;
-      const maxY = vh - l.h + l.pb;
+      const minX = -l.glyphL;
+      const maxX = vw - l.glyphR;
+      const minY = -l.glyphT;
+      const maxY = vh - l.glyphB;
 
       if (l.x <= minX)  { l.x = minX;  l.vx =  Math.abs(l.vx); bounced = true; }
       if (l.x >= maxX)  { l.x = maxX;  l.vx = -Math.abs(l.vx); bounced = true; }
@@ -859,8 +915,10 @@
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     letters.forEach(l => {
-      if (l.x + l.w > vw) l.x = Math.max(0, vw - l.w);
-      if (l.y + l.h > vh) l.y = Math.max(0, vh - l.h);
+      const maxX = vw - l.glyphR;
+      const maxY = vh - l.glyphB;
+      if (l.x > maxX) l.x = Math.max(-l.glyphL, maxX);
+      if (l.y > maxY) l.y = Math.max(-l.glyphT, maxY);
     });
     if (isTouchDevice) resizeCanvas();
   });
