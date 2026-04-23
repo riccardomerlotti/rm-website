@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>riccardo merlotti</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-tt.svg">
+  <link rel="icon" type="image/png" href="favicon-tt.png">
+  <link rel="apple-touch-icon" href="favicon-tt.png">
+  <style>
+    @font-face {
+      font-family: 'Villette';
+      src: url('Villettev0_2-VariabileVF.woff2') format('woff2-variations');
+      font-weight: 100 900;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Matrice Mono';
+      src: url('MatriceMono-VariableVF.woff2') format('woff2-variations');
+      font-weight: 100 900;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Merlini';
+      src: url('Merlini-Regular.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Eras';
+      src: url('ErasLetraset-Regular.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #fff;
+      color: #111;
+      font-family: 'EB Garamond', serif;
+      font-size: 14px;
+      font-synthesis: none;
+      -webkit-font-synthesis: none;
+      cursor: none;
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    a, input, textarea, button { cursor: none; }
+
+    /* ── custom cursor ── */
+    #cursor {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #00f6ff;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+      mix-blend-mode: difference;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    #cursor.visible { opacity: 1; }
+
+    /* on touch devices: restore native cursor, hide fake one */
+    @media (hover: none) and (pointer: coarse) {
+      html, body, a, input, textarea, button { cursor: auto; }
+      #cursor { display: none; }
+    }
+
+    /* ── all UI text shares these base styles ── */
+    .ui {
+      font-family: 'EB Garamond', serif;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.1;
+      color: #111;
+    }
+
+    /* ── top-left block ── */
+    #header {
+      position: fixed;
+      top: 32px;
+      left: 36px;
+      z-index: 10;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    #header .name { font-weight: 400; }
+    #header .role { font-weight: 400; }
+    #header .email { margin-top: 10px; }
+
+    #header .socials {
+      margin-top: 2px;
+      pointer-events: all;
+    }
+
+    #header .socials a {
+      color: #111;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      margin-right: 8px;
+      font-weight: 400;
+    }
+
+    #header .socials a:hover { opacity: 0.5; }
+
+    /* ── hint ── */
+    #hint {
+      position: fixed;
+      left: 36px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 5;
+      pointer-events: none;
+      user-select: none;
+      line-height: 1.5;
+      transition: opacity 0.4s ease;
+    }
+    #hint.hidden { opacity: 0; }
+
+    /* ── bottom-left: now showing ── */
+    #now-showing {
+      position: fixed;
+      bottom: 32px;
+      left: 36px;
+      z-index: 10;
+      pointer-events: none;
+      user-select: none;
+      line-height: 1.5;
+    }
+
+    #now-showing .label { font-weight: 400; }
+
+    #now-showing .font-name {
+      font-style: italic;
+      font-weight: 400;
+    }
+
+    /* ── bouncing letters ── */
+    .letter {
+      position: fixed;
+      z-index: 2;
+      pointer-events: none;
+      user-select: none;
+      line-height: 1;
+      will-change: left, top;
+      font-synthesis: none;
+      -webkit-font-synthesis: none;
+      transition: opacity 0.5s ease;
+    }
+
+    /* ── drawing canvas (mobile) ── */
+    #draw-canvas {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      touch-action: none;
+    }
+
+    /* mobile: narrower layout */
+    @media (hover: none) and (pointer: coarse) {
+      #draw-canvas { display: block; }
+
+      #header {
+        top: 20px;
+        left: 20px;
+      }
+
+      #hint {
+        left: 20px;
+        right: 20px;
+        text-align: left;
+      }
+
+      #now-showing {
+        bottom: 20px;
+        left: 20px;
+      }
+    }
+
+    /* debug badge — hidden by default, shown when ?debug=1 */
+    #debug-badge {
+      display: none;
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+      background: #000;
+      color: #0f0;
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      font-size: 11px;
+      padding: 8px 12px;
+      max-width: 260px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+    body.debug #debug-badge { display: block; }
+    body.debug.force-mobile #draw-canvas { display: block; }
+  </style>
+</head>
+<body>
+
+  <div id="cursor"></div>
+
+  <div id="header" class="ui">
+    <div class="name">riccardo merlotti</div>
+    <div class="role">type and graphic design</div>
+    <div class="email">riccardomerlotti.psd[at]gmail.com</div>
+    <div class="socials">
+      <a href="https://instagram.com/merl8i/" target="_blank">instagram</a><!--
+      --><a href="https://substack.com/@merl8i" target="_blank">substack</a>
+    </div>
+  </div>
+
+  <div id="hint" class="ui">
+    <span class="hint-desktop">press a key to spawn a glyph<br>change typeface using space bar</span>
+    <span class="hint-mobile" style="display:none">draw a glyph with your finger<br>double tap to change typeface</span>
+  </div>
+
+  <div id="now-showing" class="ui">
+    <div class="label">now showing</div>
+    <div class="font-name" id="font-name-label"></div>
+  </div>
+
+  <canvas id="draw-canvas"></canvas>
+
+  <div id="debug-badge"></div>
+
+<script>
+  // ─────────────────────────────────────────────────────────────
+  // $P Point-Cloud Recognizer
+  // ─────────────────────────────────────────────────────────────
+  const NumPoints = 32;
+  const Origin = { X: 0, Y: 0 };
+
+  function Point(x, y, id) { this.X = x; this.Y = y; this.ID = id; }
+
+  function PointCloud(name, points) {
+    this.Name = name;
+    this.Points = Resample(points, NumPoints);
+    this.Points = Scale(this.Points);
+    this.Points = TranslateTo(this.Points, Origin);
+  }
+
+  function PDollarRecognizer() {
+    this.PointClouds = [];
+    this.Recognize = function(points) {
+      if (this.PointClouds.length === 0) return { Name: null, Score: 0, top: [] };
+      points = Resample(points, NumPoints);
+      points = Scale(points);
+      points = TranslateTo(points, Origin);
+      let b = +Infinity, u = -1;
+      const all = [];
+      for (let i = 0; i < this.PointClouds.length; i++) {
+        const d = GreedyCloudMatch(points, this.PointClouds[i]);
+        all.push({ name: this.PointClouds[i].Name, distance: d });
+        if (d < b) { b = d; u = i; }
+      }
+      all.sort((a, b) => a.distance - b.distance);
+      return (u === -1)
+        ? { Name: null, Score: 0, top: [] }
+        : {
+            Name: this.PointClouds[u].Name,
+            Score: Math.max((b - 2.0) / -2.0, 0.0),
+            top: all.slice(0, 3)
+          };
+    };
+    this.AddPointCloud = function(name, points) {
+      this.PointClouds.push(new PointCloud(name, points));
+    };
+  }
+
+  function GreedyCloudMatch(points, P) {
+    const e = 0.50;
+    const step = Math.floor(Math.pow(points.length, 1.0 - e));
+    let min = +Infinity;
+    for (let i = 0; i < points.length; i += step) {
+      const d1 = CloudDistance(points, P.Points, i);
+      const d2 = CloudDistance(P.Points, points, i);
+      min = Math.min(min, Math.min(d1, d2));
+    }
+    return min;
+  }
+
+  function CloudDistance(pts1, pts2, start) {
+    const matched = new Array(pts1.length).fill(false);
+    let sum = 0;
+    let i = start;
+    do {
+      let index = -1;
+      let min = +Infinity;
+      for (let j = 0; j < matched.length; j++) {
+        if (!matched[j]) {
+          const d = Distance(pts1[i], pts2[j]);
+          if (d < min) { min = d; index = j; }
+        }
+      }
+      matched[index] = true;
+      const weight = 1 - ((i - start + pts1.length) % pts1.length) / pts1.length;
+      sum += weight * min;
+      i = (i + 1) % pts1.length;
+    } while (i !== start);
+    return sum;
+  }
+
+  function Resample(points, n) {
+    const I = PathLength(points) / (n - 1);
+    let D = 0.0;
+    const newpoints = [points[0]];
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].ID === points[i - 1].ID) {
+        const d = Distance(points[i - 1], points[i]);
+        if ((D + d) >= I) {
+          const qx = points[i - 1].X + ((I - D) / d) * (points[i].X - points[i - 1].X);
+          const qy = points[i - 1].Y + ((I - D) / d) * (points[i].Y - points[i - 1].Y);
+          const q = new Point(qx, qy, points[i].ID);
+          newpoints.push(q);
+          points.splice(i, 0, q);
+          D = 0.0;
+        } else D += d;
+      }
+    }
+    if (newpoints.length === n - 1) {
+      newpoints.push(new Point(points[points.length - 1].X, points[points.length - 1].Y, points[points.length - 1].ID));
+    }
+    return newpoints;
+  }
+
+  function Scale(points) {
+    let minX = +Infinity, maxX = -Infinity, minY = +Infinity, maxY = -Infinity;
+    for (const p of points) {
+      minX = Math.min(minX, p.X); minY = Math.min(minY, p.Y);
+      maxX = Math.max(maxX, p.X); maxY = Math.max(maxY, p.Y);
+    }
+    const size = Math.max(maxX - minX, maxY - minY) || 1;
+    return points.map(p => new Point((p.X - minX) / size, (p.Y - minY) / size, p.ID));
+  }
+
+  function TranslateTo(points, pt) {
+    const c = Centroid(points);
+    return points.map(p => new Point(p.X + pt.X - c.X, p.Y + pt.Y - c.Y, p.ID));
+  }
+
+  function Centroid(points) {
+    let x = 0, y = 0;
+    for (const p of points) { x += p.X; y += p.Y; }
+    return { X: x / points.length, Y: y / points.length };
+  }
+
+  function PathLength(points) {
+    let d = 0;
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].ID === points[i - 1].ID) d += Distance(points[i - 1], points[i]);
+    }
+    return d;
+  }
+
+  function Distance(p1, p2) {
+    const dx = p2.X - p1.X, dy = p2.Y - p1.Y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // CONFIG
+  // ─────────────────────────────────────────────────────────────
+  const FONTS = [
+    { family: 'Villette',     label: 'Villette Variabile', weightMin: 100, weightMax: 900 },
+    { family: 'Matrice Mono', label: 'Matrice Mono',       weightMin: 100, weightMax: 800 },
+    { family: 'Merlini',      label: 'Merlini',            weightMin: 400, weightMax: 400 },
+    { family: 'Eras',         label: 'Sera (WIP)',         weightMin: 400, weightMax: 400 },
+  ];
+
+  const SIZE_MIN     = 150;
+  const SIZE_MAX     = 150;
+  const SPEED_MIN    = 1.8;
+  const SPEED_MAX    = 1.8;
+  const LETTER_TTL   = 60000;
+
+  // mobile tuning
+  const MIN_STROKE_POINTS    = 6;     // ignore too-short scribbles
+  const MIN_STROKE_LENGTH    = 30;    // pixels — below this, treat as tap
+  const MULTISTROKE_TIMEOUT  = 500;   // ms between strokes for multistroke (X, i, j, t)
+  const DOUBLE_TAP_MS        = 350;   // window for double tap
+  const DOUBLE_TAP_DIST      = 40;    // max distance between two taps
+  const RECOGNITION_THRESHOLD = 0.10; // minimum score to accept a match
+
+  // ─────────────────────────────────────────────────────────────
+  // STATE
+  // ─────────────────────────────────────────────────────────────
+  let fontIndex   = 0;
+  let letters     = [];
+  let hintVisible = true;
+
+  const hint          = document.getElementById('hint');
+  const fontNameLabel = document.getElementById('font-name-label');
+  const cursor        = document.getElementById('cursor');
+  const drawCanvas    = document.getElementById('draw-canvas');
+  const drawCtx       = drawCanvas.getContext('2d');
+
+  // detect mobile — also allow ?mobile=1 query string to force mobile mode for testing
+  const forceMobile = new URLSearchParams(window.location.search).has('mobile');
+  const debugMode   = new URLSearchParams(window.location.search).has('debug');
+  const isTouchDevice = forceMobile || window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+  if (debugMode) document.body.classList.add('debug');
+  if (forceMobile) document.body.classList.add('force-mobile');
+  const debugBadge = document.getElementById('debug-badge');
+  function debugLog(msg) {
+    if (!debugMode) return;
+    debugBadge.textContent = msg;
+    console.log('[debug]', msg);
+  }
+
+  // show right hint
+  if (isTouchDevice) {
+    document.querySelector('.hint-desktop').style.display = 'none';
+    document.querySelector('.hint-mobile').style.display = 'inline';
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────────────────────
+  const rand    = (a, b) => Math.random() * (b - a) + a;
+  const randInt = (a, b) => Math.floor(rand(a, b + 1));
+
+  function currentFont() { return FONTS[fontIndex]; }
+  function updateFontLabel() { fontNameLabel.textContent = currentFont().label; }
+  function pickWeight(font) { return randInt(font.weightMin, font.weightMax); }
+
+  function hideHint() {
+    if (!hintVisible) return;
+    hint.classList.add('hidden');
+    hintVisible = false;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // CURSOR (desktop)
+  // ─────────────────────────────────────────────────────────────
+  document.addEventListener('mousemove', (e) => {
+    cursor.style.left = e.clientX + 'px';
+    cursor.style.top  = e.clientY + 'px';
+    if (!cursor.classList.contains('visible')) cursor.classList.add('visible');
+  });
+  document.addEventListener('mouseleave', () => cursor.classList.remove('visible'));
+  document.addEventListener('mouseenter', () => cursor.classList.add('visible'));
+
+  // ─────────────────────────────────────────────────────────────
+  // SPAWN / REMOVE LETTER
+  // ─────────────────────────────────────────────────────────────
+  function spawnLetter(char) {
+    hideHint();
+
+    const font   = currentFont();
+    const size   = rand(SIZE_MIN, SIZE_MAX);
+    const weight = pickWeight(font);
+
+    const el = document.createElement('span');
+    el.className = 'letter';
+    el.textContent = char;
+    el.style.fontFamily = `'${font.family}', serif`;
+    el.style.fontSize   = size + 'px';
+    el.style.fontWeight = weight;
+    el.style.color      = '#111';
+    el.style.opacity    = '1';
+
+    el.style.left = '-9999px';
+    el.style.top  = '-9999px';
+    document.body.appendChild(el);
+
+    const w  = el.offsetWidth  || size * 0.65;
+    const h  = el.offsetHeight || size * 1.1;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const x  = rand(0, Math.max(1, vw - w));
+    const y  = rand(0, Math.max(1, vh - h));
+    const vx = rand(SPEED_MIN, SPEED_MAX) * (Math.random() < 0.5 ? 1 : -1);
+    const vy = rand(SPEED_MIN, SPEED_MAX) * (Math.random() < 0.5 ? 1 : -1);
+
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+
+    letters.push({ el, x, y, vx, vy, w, h, born: Date.now(), dying: false });
+  }
+
+  function removeLetter(obj) {
+    obj.dying = true;
+    obj.el.style.opacity = '0';
+    setTimeout(() => {
+      obj.el.remove();
+      letters = letters.filter(l => l !== obj);
+    }, 520);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // FONT SWITCH
+  // ─────────────────────────────────────────────────────────────
+  function nextFont() {
+    fontIndex = (fontIndex + 1) % FONTS.length;
+    const font = currentFont();
+    letters.forEach(l => {
+      l.el.style.fontFamily = `'${font.family}', serif`;
+      l.el.style.fontWeight = pickWeight(font);
+    });
+    updateFontLabel();
+    requestAnimationFrame(() => {
+      letters.forEach(l => {
+        l.w = l.el.offsetWidth  || parseFloat(l.el.style.fontSize) * 0.65;
+        l.h = l.el.offsetHeight || parseFloat(l.el.style.fontSize) * 1.1;
+      });
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ANIMATION LOOP
+  // ─────────────────────────────────────────────────────────────
+  function tick() {
+    const vw  = window.innerWidth;
+    const vh  = window.innerHeight;
+    const now = Date.now();
+
+    letters.forEach(l => {
+      if (l.dying) return;
+      l.x += l.vx;
+      l.y += l.vy;
+
+      let bounced = false;
+      if (l.x <= 0)          { l.x = 0;        l.vx =  Math.abs(l.vx); bounced = true; }
+      if (l.x + l.w >= vw)   { l.x = vw - l.w; l.vx = -Math.abs(l.vx); bounced = true; }
+      if (l.y <= 0)          { l.y = 0;        l.vy =  Math.abs(l.vy); bounced = true; }
+      if (l.y + l.h >= vh)   { l.y = vh - l.h; l.vy = -Math.abs(l.vy); bounced = true; }
+
+      l.el.style.left = l.x + 'px';
+      l.el.style.top  = l.y + 'px';
+
+      if (bounced && now - l.born >= LETTER_TTL) removeLetter(l);
+    });
+
+    requestAnimationFrame(tick);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // DESKTOP INPUT
+  // ─────────────────────────────────────────────────────────────
+  if (!isTouchDevice) {
+    document.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        nextFont();
+        return;
+      }
+      if (e.key.length === 1) spawnLetter(e.key);
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // MOBILE INPUT — drawing + recognition
+  // ─────────────────────────────────────────────────────────────
+  const recognizer = new PDollarRecognizer();
+  let templatesLoaded = false;
+
+  async function loadTemplates() {
+    try {
+      const res = await fetch('templates.json');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      let count = 0;
+      for (const glyph in data) {
+        for (const templatePts of data[glyph]) {
+          const pts = templatePts.map(p => new Point(p.X, p.Y, p.ID));
+          recognizer.AddPointCloud(glyph, pts);
+          count++;
+        }
+      }
+      console.log(`[recognizer] loaded ${count} templates across ${Object.keys(data).length} glyphs`);
+      debugLog('loaded ' + count + ' templates\n' + Object.keys(data).length + ' glyphs\nready ✓');
+      templatesLoaded = count > 0;
+    } catch (e) {
+      console.warn('[recognizer] templates.json not loaded:', e.message, '— falling back to random spawn');
+      debugLog('TEMPLATES NOT LOADED\n' + e.message + '\n\nfallback: random');
+      templatesLoaded = false;
+    }
+  }
+
+  if (isTouchDevice) loadTemplates();
+
+  // drawing state
+  let strokes = [];             // current gesture: array of stroke arrays
+  let currentStroke = null;
+  let strokeID = 0;
+  let isDrawing = false;
+  let multistrokeTimer = null;
+  let lastTap = { t: 0, x: 0, y: 0 };
+  let gestureStartT = 0;
+
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    drawCanvas.width  = window.innerWidth  * dpr;
+    drawCanvas.height = window.innerHeight * dpr;
+    drawCanvas.style.width  = window.innerWidth  + 'px';
+    drawCanvas.style.height = window.innerHeight + 'px';
+    drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawCtx.lineCap = 'round';
+    drawCtx.lineJoin = 'round';
+    drawCtx.lineWidth = 3;
+    drawCtx.strokeStyle = '#111';
+  }
+
+  if (isTouchDevice) resizeCanvas();
+
+  function clearDrawCanvas() {
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  }
+
+  function strokeLength(stroke) {
+    let len = 0;
+    for (let i = 1; i < stroke.length; i++) {
+      const dx = stroke[i].X - stroke[i - 1].X;
+      const dy = stroke[i].Y - stroke[i - 1].Y;
+      len += Math.sqrt(dx * dx + dy * dy);
+    }
+    return len;
+  }
+
+  function flashCanvas(color) {
+    // brief tint then clear
+    drawCtx.save();
+    drawCtx.strokeStyle = color;
+    drawCtx.lineWidth = 3;
+    // redraw strokes in color
+    strokes.forEach(s => {
+      drawCtx.beginPath();
+      s.forEach((p, i) => {
+        if (i === 0) drawCtx.moveTo(p.X, p.Y);
+        else drawCtx.lineTo(p.X, p.Y);
+      });
+      drawCtx.stroke();
+    });
+    drawCtx.restore();
+    setTimeout(() => clearDrawCanvas(), 180);
+  }
+
+  function processGesture() {
+    // collect all points flat
+    const allPoints = strokes.flat();
+
+    if (allPoints.length < MIN_STROKE_POINTS) {
+      debugLog('too few pts (' + allPoints.length + ') -> tap');
+      strokes = [];
+      return 'tap';
+    }
+
+    // total length of all strokes
+    const totalLen = strokes.reduce((s, stroke) => s + strokeLength(stroke), 0);
+    if (totalLen < MIN_STROKE_LENGTH) {
+      debugLog('too short (' + totalLen.toFixed(0) + 'px) -> tap');
+      strokes = [];
+      return 'tap';
+    }
+
+    // try recognition
+    if (templatesLoaded) {
+      const result = recognizer.Recognize(allPoints);
+      const topStr = (result.top || []).map(t => t.name + '(' + t.distance.toFixed(2) + ')').join(' ');
+      debugLog(
+        'strokes:' + strokes.length + ' pts:' + allPoints.length +
+        '\nlen:' + totalLen.toFixed(0) + 'px' +
+        '\n=> ' + result.Name + ' score:' + result.Score.toFixed(2) +
+        '\ntop: ' + topStr
+      );
+      if (result.Name && result.Score >= RECOGNITION_THRESHOLD) {
+        spawnLetter(result.Name);
+        clearDrawCanvas();
+        strokes = [];
+        return 'recognized';
+      } else {
+        flashCanvas('#c00');
+        strokes = [];
+        return 'rejected';
+      }
+    } else {
+      // no templates: fallback — spawn a random char
+      const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      spawnLetter(CHARS[Math.floor(Math.random() * CHARS.length)]);
+      clearDrawCanvas();
+      strokes = [];
+      debugLog('NO TEMPLATES LOADED -> random');
+      return 'recognized';
+    }
+  }
+
+  function handleTap(x, y) {
+    const now = Date.now();
+    const dx = x - lastTap.x;
+    const dy = y - lastTap.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (now - lastTap.t < DOUBLE_TAP_MS && dist < DOUBLE_TAP_DIST) {
+      nextFont();
+      lastTap = { t: 0, x: 0, y: 0 };
+    } else {
+      lastTap = { t: now, x, y };
+    }
+  }
+
+  function getTouchPos(e) {
+    const t = e.touches && e.touches[0] ? e.touches[0] : (e.changedTouches && e.changedTouches[0]);
+    if (!t) return { x: 0, y: 0 };
+    return { x: t.clientX, y: t.clientY };
+  }
+
+  if (isTouchDevice) {
+    // Use pointer events — they unify mouse, touch, and pen, and work reliably
+    // in the Chrome DevTools mobile simulator (unlike synthesized touch events).
+    drawCanvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      drawCanvas.setPointerCapture(e.pointerId);
+
+      if (multistrokeTimer) {
+        clearTimeout(multistrokeTimer);
+        multistrokeTimer = null;
+      }
+      strokeID++;
+      currentStroke = [new Point(e.clientX, e.clientY, strokeID)];
+      strokes.push(currentStroke);
+      isDrawing = true;
+      if (strokes.length === 1) gestureStartT = Date.now();
+
+      drawCtx.beginPath();
+      drawCtx.moveTo(e.clientX, e.clientY);
+    });
+
+    drawCanvas.addEventListener('pointermove', (e) => {
+      if (!isDrawing) return;
+      e.preventDefault();
+      currentStroke.push(new Point(e.clientX, e.clientY, strokeID));
+      drawCtx.lineTo(e.clientX, e.clientY);
+      drawCtx.stroke();
+    });
+
+    function onPointerEnd(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      isDrawing = false;
+      const x = e.clientX, y = e.clientY;
+
+      multistrokeTimer = setTimeout(() => {
+        multistrokeTimer = null;
+        const outcome = processGesture();
+        if (outcome === 'tap') {
+          clearDrawCanvas();
+          handleTap(x, y);
+        }
+      }, MULTISTROKE_TIMEOUT);
+    }
+
+    drawCanvas.addEventListener('pointerup',     onPointerEnd);
+    drawCanvas.addEventListener('pointercancel', onPointerEnd);
+    drawCanvas.addEventListener('pointerleave',  onPointerEnd);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // RESIZE
+  // ─────────────────────────────────────────────────────────────
+  window.addEventListener('resize', () => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    letters.forEach(l => {
+      if (l.x + l.w > vw) l.x = Math.max(0, vw - l.w);
+      if (l.y + l.h > vh) l.y = Math.max(0, vh - l.h);
+    });
+    if (isTouchDevice) resizeCanvas();
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // INIT
+  // ─────────────────────────────────────────────────────────────
+  updateFontLabel();
+  tick();
+</script>
+</body>
+</html>
