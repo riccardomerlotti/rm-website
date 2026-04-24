@@ -116,6 +116,13 @@
       margin-right: 8px;
     }
     #header .socials a:hover { opacity: 0.5; }
+    #header .email a {
+      color: #111;
+      text-decoration: none;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    #header .email a:hover { opacity: 0.5; }
 
     /* ── istruzioni ── */
     #hint {
@@ -199,7 +206,7 @@
   <div id="header" class="ui">
     <div class="name">riccardo merlotti</div>
     <div class="role">type and graphic design</div>
-    <div class="email">riccardomerlotti.psd[at]gmail.com</div>
+    <div class="email"><a id="email-link" href="#">riccardomerlotti.psd[at]gmail.com</a></div>
     <div class="socials">
       <a href="https://instagram.com/merl8i/" target="_blank">instagram</a><!--
       --><a href="https://substack.com/@merl8i" target="_blank">substack</a>
@@ -871,6 +878,15 @@ window.addEventListener('resize', () => {
 updateLabel();
 tick();
 preloadFonts();
+
+// per evitare bot e spam.
+(() => {
+  const user = ['riccardomerlotti', 'psd'].join('.');
+  const addr = user + '@' + 'gmail.com';
+  const link = document.getElementById('email-link');
+  if (link) link.href = 'mailto:' + addr;
+})();
+
 </script>
 </body>
 </html>
