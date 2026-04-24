@@ -143,24 +143,19 @@
 
     /* ── bouncing letters ── */
     /*
-       The span is sized to the glyph's real ink box (not the em-box), so
-       its layout rect equals what the viewer sees. The glyph is shifted
-       inside via text-indent + margin-top so that ink-top-left sits at
-       element-top-left.
+       Each letter is rendered as a <canvas>, not a <span>. The canvas is
+       sized to the glyph's REAL ink box (measured by pixel scan), and the
+       glyph is painted at the exact position that places ink-top-left at
+       canvas-top-left. This eliminates all CSS baseline mismatches between
+       browsers and platforms.
     */
     .letter {
       position: fixed;
       z-index: 2;
       pointer-events: none;
       user-select: none;
-      display: inline-block;
-      line-height: 1;
       will-change: left, top;
-      font-synthesis: none;
-      -webkit-font-synthesis: none;
       transition: opacity 0.5s ease;
-      overflow: visible;
-      white-space: nowrap;
     }
 
     /* ── mobile drawing canvas ── */
@@ -401,8 +396,9 @@ function computeSize() {
 //
 // This function paints the glyph onto an offscreen canvas and scans the
 // alpha channel pixel by pixel to find the *real* ink bounding box.
-// Results are returned as offsets from the text origin (x=0 on baseline)
-// in pixels. Cached per (char, family, weight, size).
+// Results are: width/height of the ink box, plus the offset (originX, originY)
+// — where we need to fillText() on any canvas so that the resulting ink
+// exactly fills a canvas of size (width, height).
 // ═════════════════════════════════════════════════════════════════════
 const _inkCanvas = document.createElement('canvas');
 const _inkCtx = _inkCanvas.getContext('2d', { willReadFrequently: true });
@@ -444,19 +440,25 @@ function measureInk(char, family, weight, size) {
 
   let result;
   if (maxX < 0) {
-    // empty glyph (space etc) — return a minimal box at the origin
-    result = { left: 0, right: size * 0.3, above: size * 0.1, below: 0 };
-  } else {
-    // Offsets from the text origin (cx, cy):
-    //   left  = distance origin → leftmost ink pixel  (positive means ink spills left)
-    //   right = distance origin → rightmost ink pixel + 1
-    //   above = distance baseline → topmost ink pixel (positive = above baseline)
-    //   below = distance baseline → bottommost ink pixel + 1
+    // empty glyph (space etc) — minimal box, origin at the top-left
     result = {
-      left:  cx - minX,
-      right: (maxX + 1) - cx,
-      above: cy - minY,
-      below: (maxY + 1) - cy,
+      width:  Math.round(size * 0.3),
+      height: Math.round(size * 0.1),
+      originX: 0,
+      originY: size * 0.1,
+    };
+  } else {
+    // The ink box has width = (maxX - minX + 1), height = (maxY - minY + 1).
+    // To redraw the glyph on a fresh canvas of that size, we need to call
+    // fillText with an origin (x, y) such that the glyph's original origin
+    // (cx, cy) maps to (cx - minX, cy - minY) in the new canvas.
+    // Add 1px safety padding on all sides to absorb antialiasing edges.
+    const pad = 1;
+    result = {
+      width:   (maxX - minX + 1) + pad * 2,
+      height:  (maxY - minY + 1) + pad * 2,
+      originX: (cx - minX) + pad,
+      originY: (cy - minY) + pad,
     };
   }
 
@@ -485,7 +487,7 @@ async function preloadFonts() {
     console.warn('[fonts] preload warning', e);
   }
   _inkCache.clear();
-  letters.forEach(applyInkMeasurement);
+  letters.forEach(paintLetter);
   debugLog('fonts loaded ✓ ink cache refreshed');
 }
 
@@ -552,44 +554,29 @@ if (!isTouchDevice) {
 // ═════════════════════════════════════════════════════════════════════
 // SPAWN & REMOVE LETTERS
 // ═════════════════════════════════════════════════════════════════════
-// Apply the measured ink box to a letter element: size it to the ink,
-// and shift the text inside so the ink-top-left sits at element-top-left.
-// This keeps getBoundingClientRect() accurate for bouncing.
-function applyInkMeasurement(l) {
+// Render (or re-render) the glyph onto the letter's own canvas, sized and
+// painted so that the ink fills the canvas exactly from (0,0) to (w,h).
+// This uses the same rendering pipeline as measureInk, so what you see on
+// screen is byte-for-byte the same as what we measured — zero mismatch.
+function paintLetter(l) {
   const ink = measureInk(l.char, l.fontFamily, l.weight, l.size);
+  const dpr = window.devicePixelRatio || 1;
 
-  // Element dimensions = ink dimensions (plus 1px safety margin for
-  // sub-pixel antialiasing at the edges).
-  const safety = 1;
-  const w = ink.left + ink.right  + safety * 2;
-  const h = ink.above + ink.below + safety * 2;
+  l.el.width  = Math.ceil(ink.width  * dpr);
+  l.el.height = Math.ceil(ink.height * dpr);
+  l.el.style.width  = ink.width  + 'px';
+  l.el.style.height = ink.height + 'px';
 
-  // The glyph's origin in canvas-space lived at (cx, cy), with baseline
-  // at cy. In CSS-space, with line-height:1 and textBaseline alphabetic,
-  // the baseline of a <span> sits approximately at y = size * 0.8 from
-  // the element top. We need to shift the text so that (originX - ink.left,
-  // baselineY - ink.above) = (safety, safety) in element coordinates.
-  //
-  // horizontal: text-indent moves the glyph's x-origin relative to the
-  // element's left edge. We want origin at (ink.left + safety).
-  // vertical: use a negative margin-top to pull the glyph up so its
-  // baseline sits at (ink.above + safety) from element-top.
-  //
-  // CSS baseline position ≈ line-height * ascent-ratio, which for
-  // most fonts with line-height:1 is about 0.8 of font-size. Empirically
-  // we use 0.8 as the approximation — tiny errors are absorbed by the
-  // 1px safety margin on each side.
-  const cssBaseline = l.size * 0.8;
-  const textIndent  = ink.left + safety;            // positive: shift right
-  const marginTop   = -(cssBaseline - ink.above - safety); // negative: pull up
+  const ctx = l.el.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, ink.width, ink.height);
+  ctx.font = `${l.weight} ${l.size}px '${l.fontFamily}', serif`;
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#111';
+  ctx.fillText(l.char, ink.originX, ink.originY);
 
-  l.el.style.width        = w + 'px';
-  l.el.style.height       = h + 'px';
-  l.el.style.textIndent   = textIndent + 'px';
-  l.el.style.marginTop    = marginTop + 'px';
-
-  l.w = w;
-  l.h = h;
+  l.w = ink.width;
+  l.h = ink.height;
 }
 
 
@@ -601,14 +588,8 @@ function spawnLetter(char) {
   const size   = computeSize();
   const weight = pickWeight(font);
 
-  const el = document.createElement('span');
+  const el = document.createElement('canvas');
   el.className = 'letter';
-  el.textContent = char;
-  el.style.fontFamily = `'${font.family}', serif`;
-  el.style.fontSize   = size + 'px';
-  el.style.fontWeight = weight;
-  el.style.left = '-9999px';
-  el.style.top  = '-9999px';
   document.body.appendChild(el);
 
   const l = {
@@ -617,7 +598,7 @@ function spawnLetter(char) {
     x: 0, y: 0, vx: 0, vy: 0, w: 0, h: 0,
     born: Date.now(), dying: false,
   };
-  applyInkMeasurement(l);
+  paintLetter(l);
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -649,12 +630,9 @@ function nextFont() {
   fontIndex = (fontIndex + 1) % FONTS.length;
   const font = currentFont();
   letters.forEach(l => {
-    const newWeight = pickWeight(font);
     l.fontFamily = font.family;
-    l.weight = newWeight;
-    l.el.style.fontFamily = `'${font.family}', serif`;
-    l.el.style.fontWeight = newWeight;
-    applyInkMeasurement(l);
+    l.weight = pickWeight(font);
+    paintLetter(l);
   });
   updateLabel();
 }
@@ -673,7 +651,7 @@ function tick() {
     l.x += l.vx;
     l.y += l.vy;
 
-    // l.w / l.h are the real ink dimensions (set by applyInkMeasurement),
+    // l.w / l.h are the real ink dimensions (set by paintLetter),
     // so plain rect-vs-viewport bouncing is sufficient.
     let bounced = false;
     if (l.x <= 0)             { l.x = 0;          l.vx =  Math.abs(l.vx); bounced = true; }
