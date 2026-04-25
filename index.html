@@ -73,16 +73,32 @@
       left: 0;
       width: 16px;
       height: 16px;
-      border-radius: 50%;
-      background: #00ffff;
       pointer-events: none;
       transform: translate(-50%, -50%);
       z-index: 9999;
-      mix-blend-mode: difference;
       opacity: 0;
       transition: opacity 0.15s ease;
     }
     #cursor.visible { opacity: 1; }
+    #cursor::before,
+    #cursor::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+    }
+    /* layer rosso */
+    #cursor::before {
+      background: #ff2d00;                            /* sRGB fallback */
+      background: color(display-p3 1 0.18 0);         /* vivid P3 red */
+      mix-blend-mode: multiply;
+    }
+    /* layer ciano */
+    #cursor::after {
+      background: #00ffff;                            /* sRGB fallback */
+      background: color(display-p3 0 1 1);            /* vivid P3 cyan */
+      mix-blend-mode: screen;
+    }
 
     @media (hover: none) and (pointer: coarse) {
       html, body, a, input, textarea, button { cursor: auto; }
