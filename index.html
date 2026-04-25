@@ -74,16 +74,20 @@
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      background: #ff0000;
+      background: #00f6ff;
       pointer-events: none;
       transform: translate(-50%, -50%);
       z-index: 9999;
+      mix-blend-mode: difference;
+      filter: saturate(1.5) contrast(1.2);
       opacity: 0;
-      transition: opacity 0.15s ease, background-color 0s;
+      transition: opacity 0.15s ease;
     }
     #cursor.visible { opacity: 1; }
-    @supports (background: color(display-p3 1 0 0)) {
-      #cursor { background: color(display-p3 1 0 0); }
+
+    @media (hover: none) and (pointer: coarse) {
+      html, body, a, input, textarea, button { cursor: auto; }
+      #cursor { display: none; }
     }
 
     /* ── CSS ui ── */
@@ -524,29 +528,10 @@ const updateLabel  = () => { fontNameLabel.textContent = currentFont().label; };
 // CUSTOM CURSOR (desktop only)
 // ═════════════════════════════════════════════════════════════════════
 if (!isTouchDevice) {
-  const RED_SRGB = '#ff0000';
-  const CYAN_SRGB = '#00ffff';
-  const RED_P3 = 'color(display-p3 1 0 0)';
-  const CYAN_P3 = 'color(display-p3 0 1 1)';
-  const supportsP3 = CSS.supports('color', RED_P3);
-  const RED  = supportsP3 ? RED_P3  : RED_SRGB;
-  const CYAN = supportsP3 ? CYAN_P3 : CYAN_SRGB;
-
-  let lastOverLetter = false;
-
   document.addEventListener('mousemove', (e) => {
     cursor.style.left = e.clientX + 'px';
     cursor.style.top  = e.clientY + 'px';
     if (!cursor.classList.contains('visible')) cursor.classList.add('visible');
-
-    // Check what's under the cursor: any .letter element overlapping its center?
-    // We use elementsFromPoint to look through the cursor (which has pointer-events:none)
-    const stack = document.elementsFromPoint(e.clientX, e.clientY);
-    const overLetter = stack.some(el => el.classList && el.classList.contains('letter'));
-    if (overLetter !== lastOverLetter) {
-      cursor.style.background = overLetter ? CYAN : RED;
-      lastOverLetter = overLetter;
-    }
   });
   document.addEventListener('mouseleave', () => cursor.classList.remove('visible'));
   document.addEventListener('mouseenter', () => cursor.classList.add('visible'));
